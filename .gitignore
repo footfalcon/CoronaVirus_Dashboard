@@ -1,2 +1,4 @@
 web_app/data/
 .ipynb_checkpoints/
+__pycache__/
+
