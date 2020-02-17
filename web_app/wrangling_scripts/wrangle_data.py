@@ -84,7 +84,7 @@ def cum_data(dataset, china=False):
     # check for updates
     #scrape_tables()
 
-    fpath = '../data/'
+    fpath = 'data/'
     df = pd.read_csv(fpath+dataset+'.csv')
     #df = pd.read_csv(dataset+'.csv')
     #df = df.drop(df.columns[2:5], axis=1)
