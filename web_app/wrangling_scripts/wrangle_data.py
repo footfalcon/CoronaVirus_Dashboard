@@ -1,4 +1,6 @@
-#import datetime as dt
+import datetime as dt
+#import matplotlib.pyplot as plt
+#plt.style.use('ggplot')
 import os
 import pandas as pd
 import plotly.graph_objs as go
@@ -61,15 +63,22 @@ import time
     fig.show()
 '''
 
-# see if can change time update rule to UTC midnight
+#! CHECK BEFORE DEPLOYING TO HEROKU !#
+#TODO: chg relative file paths to 'data/fname.csv' instead of '../data/fname.csv' for Heroku
+#TODO: also check myapp.py has commented out app.run(host='0.0.0.0', port=3001, debug=True)
+
+
+# just have to save timestamp to_csv instead of os.path.getmtime?
+# I don't think can save files to Heroku anyway....need to use sqlite and append updates?
 def scrape_tables():
-    fname = '../data/Confirmed.csv'
+    #fname = '../data/Confirmed.csv'  # only this path works....
+    fname = 'data/Confirmed.csv'  # only this path works....
     last_update = os.path.getmtime(fname)
-    if time.time() - last_update > (3600 * 24):
+    if time.time() - last_update > (3600 * 2):
         for name in ['Confirmed', 'Deaths', 'Recovered']:
             git_link = 'https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-'+name+'.csv'
             df = pd.read_html(git_link)[0]
-            df.to_csv(fname[:8]+name+'.csv')
+            df.to_csv(fname[:5]+name+'.csv')
 
 
 def cum_data(dataset, china=False):
@@ -80,14 +89,14 @@ def cum_data(dataset, china=False):
 
         Returns: (df) cleaned dataframe for plotting
     '''
-
-    # check for updates
-    #scrape_tables()
-
-    fpath = 'data/'
+    scrape_tables()
+    fpath = 'data/'   # 
+    #fpath = '../data/'
     df = pd.read_csv(fpath+dataset+'.csv')
-    #df = pd.read_csv(dataset+'.csv')
-    #df = df.drop(df.columns[2:5], axis=1)
+
+    # try pulling data only from link
+    #git_link = 'https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-'+dataset+'.csv'
+    #df = pd.read_html(git_link)[0]
     dropcols = [i for i in df.columns if 'Unnamed' in i or 'Lat' in i or 'Lon' in i]
     df = df.drop(dropcols, axis=1)
 
@@ -113,18 +122,46 @@ def cum_data(dataset, china=False):
     return df
 
 
+def sars_data(dataset, china=False):
+    ''' Gets pre-cleaned SARS csv's
+
+        Args:
+        - dataset (str): 'Sars_cases', 'Sars_deaths' or 'Sars_recovered'
+
+        Returns: df
+    '''
+
+    #fpath = '../data/'  # use for local
+    fpath = 'data/'    # use for Heroku deployment
+    df = pd.read_csv(fpath+dataset+'.csv', index_col=0)
+
+    if china:
+        df = df.loc['China', : ]
+    else:
+        df = df.loc['Total', : ] - df.loc['China', : ]
+
+    return df
+
+
 # Global plotting variables
 text_color = 'rgb(200,205,208)'
 font_family = 'helvetica'   #family=font_family, 
+chart_ht = 320
+chart_wth = 420
 
 
-def plot_cum_stats(china=False, scale='linear'):
+def plot_cum_stats(china=False, sars=False, scale='linear'):
     ''' Plots cumulative figures
     '''
     #* get data
-    confirmed = cum_data('Confirmed', china=china)
-    deaths = cum_data('Deaths', china=china)
-    recovered = cum_data('Recovered', china=china)
+    if sars:
+        confirmed = sars_data('Sars_cases', china=china)
+        deaths = sars_data('Sars_deaths', china=china)
+        recovered = sars_data('Sars_recovered', china=china)
+    else:
+        confirmed = cum_data('Confirmed', china=china)
+        deaths = cum_data('Deaths', china=china)
+        recovered = cum_data('Recovered', china=china)
 
     #* Create figure with secondary y-axis; custom legend position; opacity control
     if scale == 'log':
@@ -186,8 +223,8 @@ def plot_cum_stats(china=False, scale='linear'):
         legend=dict(x=0.025, y=-0.12, orientation='h', font=dict(size=9)), # bgcolor=None, font=dict(size=12)),  did nothing
         yaxis_type=scale,
         autosize=False,
-        width=450,
-        height=350,
+        width=chart_wth,
+        height=chart_ht,
         margin=dict(l=10, r=10, b=5, t=30, pad=0),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
@@ -224,11 +261,16 @@ def plot_cum_stats(china=False, scale='linear'):
     return fig
 
 
-def plot_growth_stats(china=False):
+def plot_daily_stats(china=False, sars=False):
     #* get data
-    confirmed = cum_data('Confirmed', china=china)
-    deaths = cum_data('Deaths', china=china)
-    recovered = cum_data('Recovered', china=china)
+    if sars:
+        confirmed = sars_data('Sars_cases', china=china)
+        deaths = sars_data('Sars_deaths', china=china)
+        recovered = sars_data('Sars_recovered', china=china)
+    else:
+        confirmed = cum_data('Confirmed', china=china)
+        deaths = cum_data('Deaths', china=china)
+        recovered = cum_data('Recovered', china=china)
 
     #* calc daily change
     chg_confirmed = confirmed.diff()
@@ -302,8 +344,8 @@ def plot_growth_stats(china=False):
         bargap=0, # gap between bars of adjacent location coordinates.
         bargroupgap=0, # gap between bars of the same location coordinate.
         autosize=False,
-        width=450,
-        height=350,
+        width=chart_wth,
+        height=chart_ht,
         margin=dict(l=10, r=10, b=5, t=30, pad=0),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
@@ -333,12 +375,22 @@ def plot_growth_stats(china=False):
 def return_figures():
     # append all charts to the figures list
     figures = []
+    # Carona figs
     figures.append(plot_cum_stats(china=True, scale='linear'))
     figures.append(plot_cum_stats(china=True, scale='log'))
-    figures.append(plot_growth_stats(china=True))
+    figures.append(plot_daily_stats(china=True))
     figures.append(plot_cum_stats(scale='linear'))
     figures.append(plot_cum_stats(scale='log'))
-    figures.append(plot_growth_stats())
+    figures.append(plot_daily_stats())
+    # SARS figs
+    figures.append(plot_cum_stats(china=True, sars=True, scale='linear'))
+    figures.append(plot_cum_stats(china=True, sars=True, scale='log'))
+    figures.append(plot_daily_stats(china=True, sars=True))
+    figures.append(plot_cum_stats(sars=True, scale='linear'))
+    figures.append(plot_cum_stats(sars=True, scale='log'))
+    figures.append(plot_daily_stats(sars=True))
 
     return figures
+
+
 
